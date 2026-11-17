@@ -1,0 +1,6 @@
+numpy
+scipy
+sympy
+matplotlib
+opencv-python
+dynamixel-sdk
