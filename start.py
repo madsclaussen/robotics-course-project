@@ -19,7 +19,7 @@ from robotics import (D_DEFAULT as d, forward_kinematics, origins, inverse_kinem
 from robotics.dynamics import build_model
 from robotics.hardware import Robot, SimRobot
 import cv2
-from robotics.vision import open_camera, grab, pixel_to_plane, find_edges
+from robotics.vision import open_camera, grab, pixel_to_plane, find_edges, uv_coordinates
 
 # ---- calibrate these on your robot ---------------------------------------
 CALIB = dict(
@@ -78,6 +78,8 @@ def main():
         while True:
             frame = grab(cap)
             edges = find_edges(frame)
+            uv = uv_coordinates(edges)
+            
 
             cv2.imshow("cam", find_edges(frame))
             if cv2.waitKey(1) & 0xFF == ord("q"):

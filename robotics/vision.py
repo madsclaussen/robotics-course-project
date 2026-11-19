@@ -35,29 +35,53 @@ def grab(cap, flush=3):
     ok, frame = cap.read()
     if not ok:
         raise IOError("Camera read failed")
-    return frame
+    return cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
 
 def find_edges(frame):
-    max_value = 255
-    max_type = 4
-    max_binary_value = 255
-    trackbar_type = 'Type: \n 0: Binary \n 1: Binary Inverted \n 2: Truncate \n 3: To Zero \n 4: To Zero Inverted'
-    trackbar_value = 'Value'
-    window_name = 'frame'
-
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     # gray = cv2.medianBlur(gray, 3)
 
-    _, gray = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY )
-
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    gray = cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel)
-    gray = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
-
-
+    _, gray = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY )
 
     return gray
+
+def pixels_to_plane(uv, K, q, plane_z=0.0, **pose_kw):
+    """Back-project N pixels (N x 2 array of [u, v]) onto the plane z = plane_z [mm].
+
+    Returns (points, valid):
+        points : N x 3 array of points in the base frame (NaN where invalid)
+        valid  : boolean mask, False where the ray is parallel to / points away from the plane
+    """
+    uv = np.asarray(uv, dtype=float).reshape(-1, 2)
+    T = camera_pose(q, **pose_kw)
+    R, c0 = T[:3, :3], T[:3, 3]
+
+    uv1 = np.column_stack((uv, np.ones(len(uv))))      # N x 3 homogeneous pixels
+    rays_c = np.linalg.solve(K, uv1.T)                  # 3 x N rays in camera frame
+    rays_0 = R @ rays_c                                 # 3 x N rays in base frame
+
+    dz = rays_0[2]
+    valid = np.abs(dz) > 1e-9
+    s = np.full(len(uv), np.nan)
+    s[valid] = (plane_z - c0[2]) / dz[valid]
+    valid &= s > 0
+
+    points = c0[:, None] + s * rays_0                   # 3 x N
+    points = points.T
+    points[~valid] = np.nan
+    return points, valid
+
+
+def image_to_plane(binary, K, q, plane_z=0.0, **pose_kw):
+    """White pixels in a binary image -> 3D points on the plane, in the base frame."""
+    uv = uv_coordinates(binary)
+    points, valid = pixels_to_plane(uv, K, q, plane_z, **pose_kw)
+    return points[valid]
+
+def uv_coordinates(edges):
+    """"Takes the input image and returns coordinates of non black elements"""
+    v, u = np.nonzero(edges)
+    return np.column_stack((u, v))
 
 
 def camera_pose(q, d=D_DEFAULT, cam_offset=CAM_OFFSET_DEFAULT, R_5c=R_5C_DEFAULT):
